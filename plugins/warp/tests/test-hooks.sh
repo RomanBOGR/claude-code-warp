@@ -267,6 +267,36 @@ unset CLAUDE_CODE_VERSION
 HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../scripts" && pwd)"
 
 echo ""
+echo "=== Permission request preview ==="
+
+# Runs on-permission-request.sh end to end and pulls .summary back out of the
+# OSC sequence, so the jq preview expression is covered by the suite.
+permission_summary() {
+    echo "$1" | WARP_CLI_AGENT_PROTOCOL_VERSION=1 \
+        WARP_CLIENT_VERSION="v9999.99.99.99.99.stable_99" \
+        CLAUDE_CODE_VERSION="9999.0.0" \
+        bash "$HOOK_DIR/on-permission-request.sh" 2>/dev/null |
+        jq -r '.terminalSequence // empty' |
+        sed 's/^.*warp:\/\/cli-agent;//' | tr -d '\007' |
+        jq -r '.summary // empty'
+}
+
+echo ""
+echo "--- Tool preview ---"
+
+assert_eq "Bash shows the command" "Wants to run Bash: git push origin main" \
+    "$(permission_summary '{"tool_name":"Bash","tool_input":{"command":"git push origin main"}}')"
+
+assert_eq "Write shows the path" "Wants to run Write: /tmp/a.txt" \
+    "$(permission_summary '{"tool_name":"Write","tool_input":{"file_path":"/tmp/a.txt","content":"hi"}}')"
+
+assert_eq "AskUserQuestion shows the question" "Wants to run AskUserQuestion: Deploy now or wait?" \
+    "$(permission_summary '{"tool_name":"AskUserQuestion","tool_input":{"questions":[{"question":"Deploy now or wait?","header":"Deploy"}]}}')"
+
+assert_eq "unknown tool falls back to the raw input" 'Wants to run WebFetch: {"url":"https://example.com"}' \
+    "$(permission_summary '{"tool_name":"WebFetch","tool_input":{"url":"https://example.com"}}')"
+
+echo ""
 echo "=== Routing ==="
 
 echo ""
